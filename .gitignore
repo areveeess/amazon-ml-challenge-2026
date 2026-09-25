@@ -1,0 +1,26 @@
+# Virtual Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.pkl
+*.cbm
+
+# OS Metadata
+.DS_Store
+Thumbs.db
+
+# Submission Archives
+*_submission.zip
+
+# Output & Checkpoints (intermediate large artifacts)
+models/
+output/
+
+# Raw dataset (>100MB files prohibited by GitHub)
+student_resource/dataset/
