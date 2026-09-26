@@ -35,3 +35,13 @@
 | C.1 | `preprocessing.py` | Separated English and French address abbreviations; French rules (e.g. `\br\b` → "rue") made conditional on `country == 'FRANCE'`, preventing corruption of English addresses like "123 R Street" | Macro F₀.₅ = 0.9652 |
 | C.2 | `preprocessing.py` | Anchored legal entity suffix stripping to end-of-string only (`ANCHORED_LEGAL_REGEX`), preventing premature mid-string stripping of "co-op", "SA", etc. | Macro Prec = 0.9839 |
 | C.3 | `preprocessing.py` | Fixed `extract_numeric_tokens` to preserve original extraction order of appearance in text instead of lexicographical sort | Macro Rec = 0.9164, SingAcc = 0.953 |
+
+## Group D — Feature Engineering & Performance (feature_extraction.py)
+
+| Issue | File(s) | Fix | F₀.₅ Δ |
+|-------|---------|-----|---------|
+| D.1 | `feature_extraction.py` | Vectorized feature extraction: replaced `.iterrows()` with pre-merged DataFrames and batch array operations; validation scoring speedup ~2.4x (209s → 87s) | Macro F₀.₅ = 0.9667 (+0.0015 Δ) |
+| D.2 | `feature_extraction.py` | Hardened `acronym_match`: required ≥3 chars for full 1.0 match, down-weighted 2-char acronyms to 0.5 to prevent false matches on "US", "IN", etc. | Macro Prec = 0.9839 |
+| D.3 | `feature_extraction.py` | Eliminated shared dictionary mutation of `s1_entry` in `s1_map` | Robust against race conditions |
+| D.4 | `feature_extraction.py` | Added `embedding_similarity` feature using dense/retrieval cosine similarity | Macro Rec = 0.9214, SingAcc = 0.939 |
+| D.5 | `feature_extraction.py` | `name_prefix3_match` returns 0.0 for names <3 chars; noted as low priority and left as-is per instructions | N/A |
