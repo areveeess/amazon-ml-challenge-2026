@@ -21,7 +21,7 @@ from collections import defaultdict
 import optuna
 
 # Add src to sys.path
-SRC_DIR = Path(__file__).resolve().parent / "code" / "business_entity_resolution" / "src"
+SRC_DIR = Path(__file__).resolve().parent.parent / "code" / "business_entity_resolution" / "src"
 sys.path.insert(0, str(SRC_DIR))
 
 from preprocessing import load_and_preprocess_tsv

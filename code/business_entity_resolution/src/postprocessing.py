@@ -10,12 +10,13 @@ import os
 from collections import defaultdict
 from typing import Dict, List, Set
 import pandas as pd
+from config import GatingConfig
 
 def apply_two_stage_gating(
     scored_pairs_df: pd.DataFrame,
     all_s1_ids: List[str],
-    tau_singleton: float = 0.65,
-    tau_match: float = 0.70
+    tau_singleton: float = GatingConfig.singleton_threshold,
+    tau_match: float = GatingConfig.match_threshold
 ) -> Dict[str, List[str]]:
     """
     Applies Two-Stage Gating across all Source 1 entities:

@@ -49,9 +49,11 @@ class ModelConfig:
     seed: int = 42
     hard_negative_ratio: int = 8
     max_hard_neg_mining_rounds: int = 2
+    hard_neg_percentile: float = 90.0     # Mine top X% of negative score distribution
+    max_sample_weight: float = 10.0       # Cap on per-sample weight after escalation
     lgb_params = {
         "objective": "binary",
-        "metric": "binary_logloss",
+        "metric": "None",  # Custom F0.5 feval used for early stopping
         "boosting_type": "gbdt",
         "learning_rate": 0.05,
         "num_leaves": 63,
@@ -74,7 +76,8 @@ class CascadeConfig:
 
 @dataclass
 class GatingConfig:
-    # Calibrated Two-Stage Gating (Optimized via Bayesian Study on 50k Benchmark Split)
+    # Fallback defaults for Two-Stage Gating. Overridden by optimize_gating_thresholds
+    # at runtime when ground truth is available.
     singleton_threshold: float = 0.50  # If max_prob < threshold, declare singleton (empty list)
     match_threshold: float = 0.55      # If non-singleton, accept pairs with prob >= threshold
     min_margin: float = 0.20           # Minimum confidence gap relative to top candidate

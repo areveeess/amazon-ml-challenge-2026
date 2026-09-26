@@ -97,14 +97,19 @@ def run(team_name: str = "amazon_ml_team", fast_dev_run: bool = False):
     labels = np.array(labels)
     groups = train_features_df["source1_entity_id"].values
     
-    # Train GBDT with Dynamic Hard Negative Mining
+    # Train GBDT with Dynamic Hard Negative Mining (returns OOF predictions)
     gbdt_trainer = DynamicHardNegativeGBDT(n_splits=ModelConfig.n_splits, seed=ModelConfig.seed)
-    gbdt_trainer.train_with_hard_negatives(train_features_df, labels, groups, max_mining_rounds=ModelConfig.max_hard_neg_mining_rounds)
+    _, oof_preds = gbdt_trainer.train_with_hard_negatives(
+        train_features_df, labels, groups,
+        lgb_params=ModelConfig.lgb_params,
+        max_mining_rounds=ModelConfig.max_hard_neg_mining_rounds,
+        hard_neg_percentile=ModelConfig.hard_neg_percentile,
+        max_sample_weight=ModelConfig.max_sample_weight,
+    )
     
-    # Tune Gating Thresholds on Out-Of-Fold Validation
-    print("\nOptimizing Two-Stage Gating Thresholds for Macro F0.5...")
-    train_preds = gbdt_trainer.predict_proba(train_features_df)
-    scored_train_pairs = list(zip(train_features_df["source1_entity_id"], train_features_df["candidate_entity_id"], train_preds))
+    # Tune Gating Thresholds using genuinely Out-Of-Fold predictions (not leaky re-inference)
+    print("\nOptimizing Two-Stage Gating Thresholds for Macro F0.5 (using OOF predictions)...")
+    scored_train_pairs = list(zip(train_features_df["source1_entity_id"], train_features_df["candidate_entity_id"], oof_preds))
     all_train_s1_ids = s1_train["entity_id"].tolist()
     best_f05, opt_tau_sing, opt_tau_match = optimize_gating_thresholds(scored_train_pairs, gt_map, all_train_s1_ids)
     
