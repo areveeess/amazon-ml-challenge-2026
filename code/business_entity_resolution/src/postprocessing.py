@@ -16,39 +16,43 @@ def apply_two_stage_gating(
     scored_pairs_df: pd.DataFrame,
     all_s1_ids: List[str],
     tau_singleton: float = GatingConfig.singleton_threshold,
-    tau_match: float = GatingConfig.match_threshold
+    tau_match: float = GatingConfig.match_threshold,
+    min_margin: float = GatingConfig.min_margin
 ) -> Dict[str, List[str]]:
     """
     Applies Two-Stage Gating across all Source 1 entities:
     1. If an entity's top candidate probability < tau_singleton:
        Declare as Singleton (return empty list []).
     2. Otherwise:
-       Select all candidates with probability >= tau_match.
+       Select all candidates with probability >= tau_match and confidence margin constraint.
     """
     s1_candidates = defaultdict(list)
-    for _, row in scored_pairs_df.iterrows():
-        s1 = str(row["source1_entity_id"])
-        cand = str(row["candidate_entity_id"])
-        prob = float(row["predicted_prob"])
-        s1_candidates[s1].append((cand, prob))
-        
+    if not scored_pairs_df.empty:
+        s1_arr = scored_pairs_df["source1_entity_id"].astype(str).values
+        cand_arr = scored_pairs_df["candidate_entity_id"].astype(str).values
+        prob_arr = scored_pairs_df["predicted_prob"].astype(float).values
+        for s1, cand, prob in zip(s1_arr, cand_arr, prob_arr):
+            s1_candidates[s1].append((cand, prob))
+
     predictions = {}
-    
+
     for s1_id in all_s1_ids:
-        cands = s1_candidates.get(s1_id, [])
+        cands = s1_candidates.get(str(s1_id), [])
         if not cands:
             predictions[s1_id] = []
             continue
-            
+
         max_p = max([p for _, p in cands])
-        
+
         # Stage 1: Singleton Gate
         if max_p < tau_singleton:
             predictions[s1_id] = []
         else:
-            # Stage 2: Match Gate
-            # Sort matches descending by probability
-            matched = [cid for cid, p in sorted(cands, key=lambda x: x[1], reverse=True) if p >= tau_match]
+            # Stage 2: Match Gate with min_margin constraint
+            matched = [
+                cid for cid, p in sorted(cands, key=lambda x: x[1], reverse=True)
+                if p >= tau_match and (max_p - p) <= (1.0 - min_margin)
+            ]
             # Deduplicate preserving order
             seen = set()
             dedup_matched = []
@@ -57,7 +61,7 @@ def apply_two_stage_gating(
                     seen.add(m)
                     dedup_matched.append(m)
             predictions[s1_id] = dedup_matched
-            
+
     return predictions
 
 def export_matching_results_tsv(

@@ -19,15 +19,16 @@ import sys
 import zipfile
 import subprocess
 from pathlib import Path
+from config import TEST_DIR, PROJECT_ROOT, MATCHING_RESULTS_TSV, CANDIDATE_PAIRS_TSV
 
 def validate_and_package(team_name: str = "team_alpha"):
-    project_root = Path(__file__).resolve().parent.parent.parent.parent
+    project_root = PROJECT_ROOT
     output_dir = project_root / "output"
-    matching_tsv = output_dir / "matching_results.tsv"
-    candidate_tsv = output_dir / "candidate_pairs.tsv"
-    test_dir = project_root / "dataset" / "test"
+    matching_tsv = MATCHING_RESULTS_TSV
+    candidate_tsv = CANDIDATE_PAIRS_TSV
+    test_dir = TEST_DIR
     validator_script = project_root / "utils" / "validate_submission.py"
-    
+
     print(f"=== Starting Submission Verification for [{team_name}] ===")
     
     # 1. Run local validation if test files exist

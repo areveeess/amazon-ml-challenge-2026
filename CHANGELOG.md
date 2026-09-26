@@ -45,3 +45,12 @@
 | D.3 | `feature_extraction.py` | Eliminated shared dictionary mutation of `s1_entry` in `s1_map` | Robust against race conditions |
 | D.4 | `feature_extraction.py` | Added `embedding_similarity` feature using dense/retrieval cosine similarity | Macro Rec = 0.9214, SingAcc = 0.939 |
 | D.5 | `feature_extraction.py` | `name_prefix3_match` returns 0.0 for names <3 chars; noted as low priority and left as-is per instructions | N/A |
+
+## Group E — Packaging, Study Scripts & Benchmarking (package_submission.py, scripts/)
+
+| Issue | File(s) | Fix | F₀.₅ Δ |
+|-------|---------|-----|---------|
+| E.1 | `package_submission.py` | Imported `TEST_DIR`, `PROJECT_ROOT`, `MATCHING_RESULTS_TSV`, `CANDIDATE_PAIRS_TSV` from `config.py` instead of hardcoding `dataset/test` | Verified against validator |
+| E.2 | `scripts/tune_study.py` | Fixed `SRC_DIR` path: `.parent` → `.parent.parent` to point to project root | Done as prerequisite |
+| E.3 | `postprocessing.py`, `scripts/tune_study.py` | Wired `min_margin` parameter into `apply_two_stage_gating` and vectorized pair loops | Gating logic aligned with Optuna study |
+| E.4 | `scripts/create_benchmark.py` | Benchmark distractor pool kept at 25k per source (~223k target pool, ~1.5 min run) per user confirmation; full ~1.7M scale validated in Final Steps | N/A |
