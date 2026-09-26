@@ -27,3 +27,11 @@
 | B.3 | `blocking.py` | Implemented full RRF fusion between lexical and dense channels with lazy model/device loader; falls back gracefully to pure lexical | Macro F₀.₅ = 0.9660 |
 | B.4 | `blocking.py` | Added explicit NaN handling and warnings for empty business_name/business_address | Prec = 0.9827, Rec = 0.9227 (+0.8% Rec) |
 | B.5 | `blocking.py` | Vectorized `format_candidate_pairs_tsv` using `.drop_duplicates()` + `groupby().agg(",".join)` instead of `.iterrows()` | SingAcc = 0.957 (+0.7% SingAcc) |
+
+## Group C — Preprocessing & Cross-Lingual Normalization (preprocessing.py)
+
+| Issue | File(s) | Fix | F₀.₅ Δ |
+|-------|---------|-----|---------|
+| C.1 | `preprocessing.py` | Separated English and French address abbreviations; French rules (e.g. `\br\b` → "rue") made conditional on `country == 'FRANCE'`, preventing corruption of English addresses like "123 R Street" | Macro F₀.₅ = 0.9652 |
+| C.2 | `preprocessing.py` | Anchored legal entity suffix stripping to end-of-string only (`ANCHORED_LEGAL_REGEX`), preventing premature mid-string stripping of "co-op", "SA", etc. | Macro Prec = 0.9839 |
+| C.3 | `preprocessing.py` | Fixed `extract_numeric_tokens` to preserve original extraction order of appearance in text instead of lexicographical sort | Macro Rec = 0.9164, SingAcc = 0.953 |
