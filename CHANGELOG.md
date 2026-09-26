@@ -54,3 +54,11 @@
 | E.2 | `scripts/tune_study.py` | Fixed `SRC_DIR` path: `.parent` → `.parent.parent` to point to project root | Done as prerequisite |
 | E.3 | `postprocessing.py`, `scripts/tune_study.py` | Wired `min_margin` parameter into `apply_two_stage_gating` and vectorized pair loops | Gating logic aligned with Optuna study |
 | E.4 | `scripts/create_benchmark.py` | Benchmark distractor pool kept at 25k per source (~223k target pool, ~1.5 min run) per user confirmation; full ~1.7M scale validated in Final Steps | N/A |
+
+## Group F — Requirements & Compliance Hygiene (requirements.txt)
+
+| Issue | File(s) | Fix | F₀.₅ Δ |
+|-------|---------|-----|---------|
+| F.1 | `requirements.txt` | Removed `catboost>=1.2.0` (unused, saving 200+ MB bloat) | N/A |
+| F.2 | `requirements.txt` | Added `optuna>=3.5.0` to ensure clean reproduction of `tune_study.py` | N/A |
+| F.3 | `requirements.txt` | Removed unused `rank-bm25>=0.2.2`; lexical retrieval uses optimized dual TF-IDF char/word CSR matrices | N/A |
