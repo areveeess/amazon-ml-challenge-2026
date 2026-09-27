@@ -10,7 +10,7 @@ Directly implements the competition evaluation criteria:
 - Grid/Coordinate search to find optimal (tau_singleton, tau_match)
 """
 
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set, Tuple, Optional
 import numpy as np
 
 def compute_entity_f05(true_matches: Set[str], pred_matches: Set[str]) -> float:
@@ -55,17 +55,24 @@ def compute_macro_f05(
 def optimize_gating_thresholds(
     scored_pairs: List[Tuple[str, str, float]],
     ground_truth_map: Dict[str, Set[str]],
-    all_s1_ids: List[str]
+    all_s1_ids: List[str],
+    delta_margin: float = 0.08,
+    min_margin: Optional[float] = None
 ) -> Tuple[float, float, float]:
     """
     Searches for optimal (tau_singleton, tau_match) maximizing macro F_0.5.
     Returns (best_f05, best_tau_singleton, best_tau_match)
     """
     from collections import defaultdict
+    eff_delta_margin = delta_margin if min_margin is None else (min_margin if min_margin <= 0.30 else delta_margin)
+
     s1_candidates = defaultdict(list)
     for s1_id, cand_id, prob in scored_pairs:
         s1_candidates[s1_id].append((cand_id, prob))
         
+    # Strictly filter ground truth map to the evaluated Source 1 entities
+    target_gt_map = {s1_id: ground_truth_map.get(s1_id, set()) for s1_id in all_s1_ids}
+
     best_f05 = -1.0
     best_tau_singleton = 0.65
     best_tau_match = 0.70
@@ -88,17 +95,17 @@ def optimize_gating_thresholds(
                 if max_p < tau_sing:
                     pred_map[s1_id] = set()
                 else:
-                    # Match Gate
-                    matches = {cid for cid, p in cands if p >= tau_m}
+                    # Match Gate with true relative delta_margin constraint
+                    matches = {cid for cid, p in cands if p >= tau_m and (max_p - p) <= eff_delta_margin}
                     pred_map[s1_id] = matches
                     
-            f05 = compute_macro_f05(ground_truth_map, pred_map)
+            f05 = compute_macro_f05(target_gt_map, pred_map)
             if f05 > best_f05:
                 best_f05 = f05
                 best_tau_singleton = tau_sing
                 best_tau_match = tau_m
                 
-    print(f"[Module 4 Optimizer] Optimal Macro F0.5 = {best_f05:.4f} (tau_singleton = {best_tau_singleton:.2f}, tau_match = {best_tau_match:.2f})")
+    print(f"[Module 4 Optimizer] Optimal Macro F0.5 = {best_f05:.4f} (tau_singleton = {best_tau_singleton:.2f}, tau_match = {best_tau_match:.2f}, delta_margin = {eff_delta_margin:.2f})")
     return best_f05, best_tau_singleton, best_tau_match
 
 if __name__ == "__main__":

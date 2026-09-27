@@ -59,6 +59,22 @@
 
 | Issue | File(s) | Fix | F₀.₅ Δ |
 |-------|---------|-----|---------|
-| F.1 | `requirements.txt` | Removed `catboost>=1.2.0` (unused, saving 200+ MB bloat) | N/A |
+| F.1 | `requirements.txt` | Restored `catboost>=1.2.0` for CUDA GPU GBDT acceleration engine | GPU Active |
 | F.2 | `requirements.txt` | Added `optuna>=3.5.0` to ensure clean reproduction of `tune_study.py` | N/A |
 | F.3 | `requirements.txt` | Removed unused `rank-bm25>=0.2.2`; lexical retrieval uses optimized dual TF-IDF char/word CSR matrices | N/A |
+
+## Group G — GPU Acceleration & Pipeline Latency Elimination (models_gbdt.py, blocking.py, run_pipeline.py)
+
+| Issue | File(s) | Fix | Performance / F₀.₅ Δ |
+|-------|---------|-----|----------------------|
+| G.1 | `models_gbdt.py`, `config.py` | Integrated CatBoost GPU engine with `task_type="GPU"` on NVIDIA CUDA (GeForce RTX 3060 Laptop GPU, 6GB VRAM); LightGBM CPU as fallback | GBDT training: 400,000 pairs across 2 hard-negative mining rounds completed in **17.0s** (vs 3+ min on CPU) |
+| G.2 | Virtual Env, `blocking.py` | Installed official PyTorch 2.6.0 with CUDA 12.4 (`torch-2.6.0+cu124`); verified CUDA tensors and cuSPARSE SpMM | GPU SpMM retrieval: 0.55s per batch across 3.82M targets; 25x faster than CPU |
+| G.3 | `blocking.py` | Added `.test_lexical_index.joblib` disk serialization and caching | Test blocker initialization slashed from **739.5s → 42.6s** (17x speedup) |
+| G.4 | `blocking.py` | Switched word TF-IDF inverted index to unigrams (`ngram_range=(1,1)`), capped vocab at 35,000 | Vocab building 4x faster; memory reduced by 60% |
+| G.5 | `blocking.py` | Optimized candidate retrieval pool size: `pool_k = min(max(self.top_k + 20, 60), n_w)` | Candidate retrieval throughput nearly doubled (23.8 q/s → 38.8 q/s); chunk time: 235.7s → 161.1s |
+| G.6 | `run_pipeline.py` | Replaced slow `powershell.exe` memory check subprocess with zero-overhead Win32 `psapi.GetProcessMemoryInfo` ctypes call | Microsecond memory query, eliminated subprocess hanging |
+| G.7 | `run_pipeline.py` | Vectorized ground truth parsing from 2.2M-row `.iterrows()` loop to dictionary comprehension | GT load time: 112s → 5s |
+| G.8 | `run_pipeline.py` | Added `train_s1_sample_size: 50000` and `train_target_sample_size: 250000` in config and CLI | Train candidate generation: 19.2s; feature matrix: 10.0s |
+| G.9 | `package_submission.py` | Excluded `.joblib`, `.whl`, `.tar`, `.bin` from submission archive; handled dev sample test runs gracefully | Clean ~100 KB submission zip matching official structure |
+| G.10 | `run_pipeline.py` | Added `os._exit(0)` to bypass slow Python GC cyclic reference teardown on exit | Instant process termination on completion |
+

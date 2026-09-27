@@ -8,7 +8,7 @@ Implements:
 """
 
 import os
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 import joblib
 import numpy as np
 import pandas as pd
@@ -19,25 +19,73 @@ from config import ModelConfig
 
 
 def f05_eval(preds, train_data):
-    """Custom F0.5 evaluation metric for LightGBM early stopping.
-    Also computes binary_logloss as a secondary metric for monitoring.
-
-    For objective='binary', LightGBM passes probabilities (post-sigmoid)
-    to custom eval functions, so no manual sigmoid is needed here.
+    """Custom Macro F0.5 evaluation metric for LightGBM early stopping.
+    Directly reuses evaluate.py's compute_macro_f05:
+    - F_0.5 = (1.25 * Precision * Recall) / (0.25 * Precision + Recall)
+    - Computed PER Source-1 entity, then macro-averaged across all Source-1 entities.
+    - Singletons count: an entity with no true matches scores 1.0 if empty list predicted,
+      0.0 if any match predicted for it.
     """
     labels = train_data.get_label()
-    binary_preds = (preds >= 0.5).astype(int)
-    score = fbeta_score(labels, binary_preds, beta=0.5, zero_division=0.0)
     loss = log_loss(labels, preds)
-    return [('f05', score, True), ('binary_logloss', loss, False)]
+
+    if hasattr(train_data, "s1_ids") and hasattr(train_data, "cand_ids"):
+        from evaluate import compute_macro_f05
+        from collections import defaultdict
+        s1_ids = train_data.s1_ids
+        cand_ids = train_data.cand_ids
+
+        # Build ground truth map from validation labels
+        gt_map = defaultdict(set)
+        for s1, cid, y in zip(s1_ids, cand_ids, labels):
+            if y == 1:
+                gt_map[s1].add(cid)
+        for s1 in s1_ids:
+            if s1 not in gt_map:
+                gt_map[s1] = set()
+
+        # Build predictions map (threshold 0.50)
+        pred_map = defaultdict(set)
+        for s1, cid, p in zip(s1_ids, cand_ids, preds):
+            if p >= 0.50:
+                pred_map[s1].add(cid)
+        for s1 in s1_ids:
+            if s1 not in pred_map:
+                pred_map[s1] = set()
+
+        score = compute_macro_f05(gt_map, pred_map)
+    else:
+        binary_preds = (preds >= 0.5).astype(int)
+        score = fbeta_score(labels, binary_preds, beta=0.5, zero_division=0.0)
+
+    return [('macro_f05', score, True), ('binary_logloss', loss, False)]
+
 
 
 class DynamicHardNegativeGBDT:
-    def __init__(self, n_splits: int = ModelConfig.n_splits, seed: int = ModelConfig.seed):
+    def __init__(self, n_splits: int = ModelConfig.n_splits, seed: int = ModelConfig.seed, use_gpu: bool = None):
         self.n_splits = n_splits
         self.seed = seed
         self.models = []
         self.feature_cols = []
+        if use_gpu is None:
+            self.use_gpu = getattr(ModelConfig, "use_gpu", True)
+        else:
+            self.use_gpu = use_gpu
+
+        if self.use_gpu:
+            try:
+                import catboost as cb
+                _test_m = cb.CatBoostClassifier(iterations=1, task_type="GPU", verbose=False)
+                _test_m.fit(np.array([[0.0, 1.0], [1.0, 0.0]]), np.array([0, 1]))
+                self.gpu_ready = True
+                print("[Module 3] GPU Engine ACTIVE: CatBoost GPU on NVIDIA CUDA Device!")
+            except Exception as e:
+                print(f"[Module 3 Warning] GPU initialization failed ({e}), falling back to LightGBM CPU.")
+                self.use_gpu = False
+                self.gpu_ready = False
+        else:
+            self.gpu_ready = False
 
     def train_with_hard_negatives(
         self,
@@ -48,10 +96,10 @@ class DynamicHardNegativeGBDT:
         max_mining_rounds: int = None,
         hard_neg_percentile: float = None,
         max_sample_weight: float = None,
-    ) -> Tuple[List[lgb.Booster], np.ndarray]:
+    ) -> Tuple[List[Any], np.ndarray]:
         """
-        Trains LightGBM using Iterative Hard-Negative Mining:
-        1. Train baseline 5-fold models on initial candidates + hard negatives.
+        Trains GBDT (CatBoost GPU if use_gpu=True, else LightGBM CPU) using Iterative Hard-Negative Mining:
+        1. Train baseline models on initial candidates + hard negatives.
         2. Identify False Positives using percentile-based threshold on
            negative-score distribution (not a hardcoded cutoff).
         3. Re-weight hard negatives in subsequent rounds (with capped escalation).
@@ -73,14 +121,12 @@ class DynamicHardNegativeGBDT:
         X = features_df[self.feature_cols].values
         y = labels
 
-        # Build params: use ModelConfig.lgb_params as single source of truth
+        # Build params: use ModelConfig.lgb_params as single source of truth for LightGBM
         if lgb_params is None:
             params = ModelConfig.lgb_params.copy()
         else:
             params = lgb_params.copy()
-        # Force custom feval as the sole early-stopping metric
         params["metric"] = "None"
-        # Extract n_estimators → num_boost_round (lgb.train API convention)
         num_boost_round = int(params.pop("n_estimators", 800))
 
         n_unique_groups = len(np.unique(groups))
@@ -88,13 +134,14 @@ class DynamicHardNegativeGBDT:
         gkf = GroupKFold(n_splits=actual_splits)
 
         current_sample_weights = np.ones(len(y), dtype=np.float32)
-        print(f"[Module 3] Initial training size: {len(y)} pairs "
+        engine_name = "CatBoost GPU" if self.use_gpu else "LightGBM CPU"
+        print(f"[Module 3] Initial training size ({engine_name}): {len(y)} pairs "
               f"(Positives: {(y == 1).sum()}, Negatives: {(y == 0).sum()})")
 
         oof_preds = np.zeros(len(y))
 
         for round_idx in range(1, max_mining_rounds + 1):
-            print(f"\n--- [Module 3] Hard-Negative Mining Round {round_idx}/{max_mining_rounds} ---")
+            print(f"\n--- [Module 3] Hard-Negative Mining Round {round_idx}/{max_mining_rounds} ({engine_name}) ---")
             fold_models = []
             oof_preds = np.zeros(len(y))
 
@@ -103,24 +150,41 @@ class DynamicHardNegativeGBDT:
                 w_train = current_sample_weights[train_idx]
                 X_val, y_val = X[val_idx], y[val_idx]
 
-                fold_params = params.copy()
-                fold_params["random_state"] = self.seed + fold
+                if self.use_gpu:
+                    import catboost as cb
+                    train_pool = cb.Pool(data=X_train, label=y_train, weight=w_train)
+                    val_pool = cb.Pool(data=X_val, label=y_val)
 
-                trn_data = lgb.Dataset(X_train, label=y_train, weight=w_train)
-                val_data = lgb.Dataset(X_val, label=y_val, reference=trn_data)
+                    cb_params = getattr(ModelConfig, "catboost_params", {}).copy()
+                    cb_params["random_seed"] = self.seed + fold
 
-                model = lgb.train(
-                    fold_params,
-                    trn_data,
-                    num_boost_round=num_boost_round,
-                    valid_sets=[val_data],
-                    feval=f05_eval,
-                    callbacks=[lgb.early_stopping(stopping_rounds=40, first_metric_only=True, verbose=False)]
-                )
+                    model = cb.CatBoostClassifier(**cb_params)
+                    model.fit(train_pool, eval_set=val_pool, verbose=False)
 
-                val_preds = model.predict(X_val, num_iteration=model.best_iteration)
-                oof_preds[val_idx] = val_preds
-                fold_models.append(model)
+                    val_preds = model.predict_proba(val_pool)[:, 1]
+                    oof_preds[val_idx] = val_preds
+                    fold_models.append(model)
+                else:
+                    fold_params = params.copy()
+                    fold_params["random_state"] = self.seed + fold
+
+                    trn_data = lgb.Dataset(X_train, label=y_train, weight=w_train)
+                    val_data = lgb.Dataset(X_val, label=y_val, reference=trn_data)
+                    val_data.s1_ids = groups[val_idx]
+                    val_data.cand_ids = features_df["candidate_entity_id"].values[val_idx]
+
+                    model = lgb.train(
+                        fold_params,
+                        trn_data,
+                        num_boost_round=num_boost_round,
+                        valid_sets=[val_data],
+                        feval=f05_eval,
+                        callbacks=[lgb.early_stopping(stopping_rounds=40, first_metric_only=True, verbose=False)]
+                    )
+
+                    val_preds = model.predict(X_val, num_iteration=model.best_iteration)
+                    oof_preds[val_idx] = val_preds
+                    fold_models.append(model)
 
             self.models = fold_models
 
@@ -149,18 +213,22 @@ class DynamicHardNegativeGBDT:
         X = features_df[self.feature_cols].values
         fold_preds = np.zeros(len(X))
         for model in self.models:
-            fold_preds += model.predict(X, num_iteration=model.best_iteration) / len(self.models)
+            if hasattr(model, "predict_proba"):
+                fold_preds += model.predict_proba(X)[:, 1] / len(self.models)
+            else:
+                fold_preds += model.predict(X, num_iteration=model.best_iteration) / len(self.models)
         return fold_preds
 
     def save(self, output_dir: str):
         os.makedirs(output_dir, exist_ok=True)
-        joblib.dump({"models": self.models, "feature_cols": self.feature_cols}, os.path.join(output_dir, "gbdt_ensemble.pkl"))
+        joblib.dump({"models": self.models, "feature_cols": self.feature_cols, "use_gpu": self.use_gpu}, os.path.join(output_dir, "gbdt_ensemble.pkl"))
         print(f"[Module 3] Saved GBDT models to {output_dir}")
 
     def load(self, model_path: str):
         data = joblib.load(model_path)
         self.models = data["models"]
         self.feature_cols = data["feature_cols"]
+        self.use_gpu = data.get("use_gpu", False)
 
 if __name__ == "__main__":
     # Smoke test Module 3 Model

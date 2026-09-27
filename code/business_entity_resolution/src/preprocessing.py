@@ -157,17 +157,21 @@ def preprocess_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     # Clean Country
     out_df["country"] = out_df["country"].fillna("UNKNOWN").astype(str).str.strip().str.upper()
 
+    b_names = out_df["business_name"].fillna("").astype(str).tolist()
+    b_addrs = out_df["business_address"].fillna("").astype(str).tolist()
+    b_countries = out_df["country"].tolist()
+
     # Process Names
-    name_tuples = [clean_business_name(str(name)) for name in out_df["business_name"]]
+    name_tuples = [clean_business_name(name) for name in b_names]
     out_df["clean_name"] = [t[0] for t in name_tuples]
     out_df["legal_suffix"] = [t[1] for t in name_tuples]
 
     # Process Addresses — pass country so French replacements are conditional
     out_df["clean_address"] = [
-        clean_address(str(addr), str(country))
-        for addr, country in zip(out_df["business_address"], out_df["country"])
+        clean_address(addr, country)
+        for addr, country in zip(b_addrs, b_countries)
     ]
-    out_df["extracted_numbers"] = [extract_numeric_tokens(str(addr)) for addr in out_df["business_address"]]
+    out_df["extracted_numbers"] = [extract_numeric_tokens(addr) for addr in b_addrs]
 
     # Combined representation for lexical and dense embeddings
     out_df["clean_text"] = (
@@ -177,10 +181,37 @@ def preprocess_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return out_df
 
 
-def load_and_preprocess_tsv(path: str) -> pd.DataFrame:
-    """Safely loads a tab-separated TSV file and applies full preprocessing."""
-    df = pd.read_csv(path, sep="\t", dtype=str)
-    return preprocess_dataframe(df)
+def load_and_preprocess_tsv(path: str, nrows: int = None, use_cache: bool = True) -> pd.DataFrame:
+    """
+    Safely loads a tab-separated TSV file and applies full preprocessing.
+    If use_cache is True and nrows is None, checks for a persisted pickle cache
+    to avoid recomputing on subsequent pipeline runs.
+    """
+    import joblib
+    from pathlib import Path
+
+    path_obj = Path(path)
+    suffix = f"_{nrows}" if nrows is not None else ""
+    cache_path = path_obj.parent / f".{path_obj.stem}{suffix}_preprocessed.pkl"
+
+    if use_cache and cache_path.exists():
+        try:
+            print(f"[Module 1 Cache] Loading cached preprocessed data from {cache_path.name}...")
+            return joblib.load(cache_path)
+        except Exception as e:
+            print(f"[Module 1 Cache] Cache load failed ({e}), recomputing...")
+
+    df = pd.read_csv(path, sep="\t", dtype=str, nrows=nrows)
+    processed = preprocess_dataframe(df)
+
+    if use_cache:
+        try:
+            joblib.dump(processed, cache_path, compress=3)
+            print(f"[Module 1 Cache] Saved preprocessed cache to {cache_path.name}")
+        except Exception:
+            pass
+
+    return processed
 
 
 if __name__ == "__main__":

@@ -24,3 +24,9 @@ output/
 
 # Raw dataset (>100MB files prohibited by GitHub)
 student_resource/dataset/
+
+# CatBoost and Joblib artifacts
+catboost_info/
+*.joblib
+*.whl
+

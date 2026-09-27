@@ -8,7 +8,7 @@ Implements:
 
 import os
 from collections import defaultdict
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Optional
 import pandas as pd
 from config import GatingConfig
 
@@ -17,7 +17,8 @@ def apply_two_stage_gating(
     all_s1_ids: List[str],
     tau_singleton: float = GatingConfig.singleton_threshold,
     tau_match: float = GatingConfig.match_threshold,
-    min_margin: float = GatingConfig.min_margin
+    delta_margin: float = GatingConfig.delta_margin,
+    min_margin: float = None
 ) -> Dict[str, List[str]]:
     """
     Applies Two-Stage Gating across all Source 1 entities:
@@ -26,6 +27,7 @@ def apply_two_stage_gating(
     2. Otherwise:
        Select all candidates with probability >= tau_match and confidence margin constraint.
     """
+    eff_margin = delta_margin if min_margin is None else (min_margin if min_margin <= 0.30 else delta_margin)
     s1_candidates = defaultdict(list)
     if not scored_pairs_df.empty:
         s1_arr = scored_pairs_df["source1_entity_id"].astype(str).values
@@ -48,10 +50,10 @@ def apply_two_stage_gating(
         if max_p < tau_singleton:
             predictions[s1_id] = []
         else:
-            # Stage 2: Match Gate with min_margin constraint
+            # Stage 2: Match Gate with true relative delta_margin constraint
             matched = [
                 cid for cid, p in sorted(cands, key=lambda x: x[1], reverse=True)
-                if p >= tau_match and (max_p - p) <= (1.0 - min_margin)
+                if p >= tau_match and (max_p - p) <= eff_margin
             ]
             # Deduplicate preserving order
             seen = set()

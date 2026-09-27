@@ -140,10 +140,12 @@ def build_features_dataframe(
 
     # Pre-merge S1 and candidate attributes in vectorized C-level merge
     s1_cols = ["entity_id", "clean_name", "legal_suffix", "clean_address", "extracted_numbers", "country"]
-    s1_sub = s1_preprocessed_df[[c for c in s1_cols if c in s1_preprocessed_df.columns]].drop_duplicates(subset=["entity_id"])
+    s1_ids_present = set(candidates_df["source1_entity_id"])
+    s1_sub = s1_preprocessed_df[s1_preprocessed_df["entity_id"].isin(s1_ids_present)][[c for c in s1_cols if c in s1_preprocessed_df.columns]].drop_duplicates(subset=["entity_id"])
 
     tgt_cols = ["entity_id", "clean_name", "legal_suffix", "clean_address", "extracted_numbers", "country"]
-    tgt_sub = target_preprocessed_df[[c for c in tgt_cols if c in target_preprocessed_df.columns]].drop_duplicates(subset=["entity_id"])
+    cand_ids_present = set(candidates_df["candidate_entity_id"])
+    tgt_sub = target_preprocessed_df[target_preprocessed_df["entity_id"].isin(cand_ids_present)][[c for c in tgt_cols if c in target_preprocessed_df.columns]].drop_duplicates(subset=["entity_id"])
 
     merged = candidates_df.merge(
         s1_sub,

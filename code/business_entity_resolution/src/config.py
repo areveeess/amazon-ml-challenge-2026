@@ -42,15 +42,28 @@ class BlockingConfig:
     embedding_model_name: str = "BAAI/bge-m3"  # Multilingual SOTA
     fallback_embedding_model: str = "intfloat/multilingual-e5-base"
     batch_size: int = 64
+    train_s1_sample_size: int = 50000
+    train_target_sample_size: int = 250000
 
 @dataclass
 class ModelConfig:
     n_splits: int = 5
     seed: int = 42
+    use_gpu: bool = True  # Enable GPU-accelerated GBDT (CatBoost GPU / PyTorch CUDA)
     hard_negative_ratio: int = 8
     max_hard_neg_mining_rounds: int = 2
     hard_neg_percentile: float = 90.0     # Mine top X% of negative score distribution
     max_sample_weight: float = 10.0       # Cap on per-sample weight after escalation
+    catboost_params = {
+        "iterations": 600,
+        "learning_rate": 0.08,
+        "depth": 6,
+        "loss_function": "Logloss",
+        "eval_metric": "Logloss",
+        "task_type": "GPU",
+        "verbose": False,
+        "early_stopping_rounds": 40
+    }
     lgb_params = {
         "objective": "binary",
         "metric": "None",  # Custom F0.5 feval used for early stopping
@@ -76,8 +89,8 @@ class CascadeConfig:
 
 @dataclass
 class GatingConfig:
-    # Fallback defaults for Two-Stage Gating. Overridden by optimize_gating_thresholds
-    # at runtime when ground truth is available.
-    singleton_threshold: float = 0.50  # If max_prob < threshold, declare singleton (empty list)
-    match_threshold: float = 0.55      # If non-singleton, accept pairs with prob >= threshold
-    min_margin: float = 0.20           # Minimum confidence gap relative to top candidate
+    # Tuned via Optuna study with true relative delta_margin.
+    singleton_threshold: float = 0.75  # If max_prob < threshold, declare singleton (empty list)
+    match_threshold: float = 0.90      # If non-singleton, accept pairs with prob >= threshold
+    delta_margin: float = 0.11         # Relative confidence gap: (max_p - p) <= delta_margin
+    min_margin: float = 0.11           # Alias for delta_margin for backward compatibility
